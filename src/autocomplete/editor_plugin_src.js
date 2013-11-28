@@ -38,390 +38,451 @@
  * Support: 
  * You are welcome to use this plugin at your own risk.  It is currently 
  * being maintained on GitHub where you can submit issues / feature requests. 
+ *
+ * Changes: Steve Hobbs (elkdanger)
+ * - Support for triggers which are more than one char in length
+ * - Support for TinyMCE 4 inline mode
+ * - Uses new plugin filename
+ * - Fixed a bug with the output of the enclosing string
  */
 
 (function () {
-	var autocomplete_data = {};
-	var DOWN_ARROW_KEY = 40;
-	var UP_ARROW_KEY = 38;
-	var ESC_KEY = 27;
-	var ENTER_KEY = 13;
-	var END_WORD_KEYS = [32, 59, 186, 188, 190];
+    var autocomplete_data = {};
+    var DOWN_ARROW_KEY = 40;
+    var UP_ARROW_KEY = 38;
+    var ESC_KEY = 27;
+    var ENTER_KEY = 13;
+    var END_WORD_KEYS = [32, 59, 186, 188, 190];
 
-	function parseOptions(param) {
-		return param.options == null && typeof param != "boolean" ? param.split(",") : param.options;
-	}
+    function parseOptions(param) {
+        return param.options == null && typeof param != "boolean" ? param.split(",") : param.options;
+    }
 
-	tinymce.create('tinymce.plugins.AutoCompletePlugin', {
+    tinymce.create('tinymce.plugins.AutoCompletePlugin', {
 
-		setOptions: function (param) {
-			autocomplete_data.options = parseOptions(param);
-		},
+        setOptions: function (param) {
+            autocomplete_data.options = parseOptions(param);
+        },
 
-		getOptions: function () {
-			return autocomplete_data.options;
-		},
+        getOptions: function () {
+            return autocomplete_data.options;
+        },
 
-		init: function (ed, url) {
+        init: function (ed, url) {
 
-			autocomplete_data = {
-				list: createOptionList(),
-				visible: false,
-				delimiter: ed.getParam('autocomplete_delimiters', '160,32').split(","),
-				options: parseOptions(ed.getParam('autocomplete_options', '')),
-				optionsUrl: parseOptions(ed.getParam('autocomplete_options_url', false)),
-				trigger: ed.getParam('autocomplete_trigger', '@'),
-				enclosing: ed.getParam('autocomplete_end_option', ''),
-				minLength: ed.getParam('autocomplete_min_length', '3'),
-				onSelect: ed.getParam('autocomplete_on_select', false),
-				onMatch: ed.getParam('autocomplete_on_match', false)
-			};
+            autocomplete_data = {
+                list: createOptionList(),
+                visible: false,
+                delimiter: ed.getParam('autocomplete_delimiters', '160,32').split(","),
+                options: parseOptions(ed.getParam('autocomplete_options', '')),
+                optionsUrl: parseOptions(ed.getParam('autocomplete_options_url', false)),
+                trigger: ed.getParam('autocomplete_trigger', '@'),
+                enclosing: ed.getParam('autocomplete_end_option', ''),
+                minLength: ed.getParam('autocomplete_min_length', '3'),
+                onSelect: ed.getParam('autocomplete_on_select', false),
+                onMatch: ed.getParam('autocomplete_on_match', false)
+            };
 
-			var t = this;
+            var t = this;
 
-			// Setup plugin event
-			if (autocomplete_data.onSelect) {
-				t.onSelect = new tinymce.util.Dispatcher(t);
-				t.onSelect.add(function (ed, selected) {
-					ed.execCallback('autocomplete_on_select', ed, selected);
-				});
-			}
-			if (autocomplete_data.onMatch) {
-				t.onMatch = new tinymce.util.Dispatcher(t);
-				t.onMatch.add(function (ed, match) {
-					ed.execCallback('autocomplete_on_match', ed, match);
-				});
-			}
+            // Setup plugin event
+            if (autocomplete_data.onSelect) {
+                t.onSelect = new tinymce.util.Dispatcher(t);
+                t.onSelect.add(function (ed, selected) {
+                    ed.execCallback('autocomplete_on_select', ed, selected);
+                });
+            }
+            if (autocomplete_data.onMatch) {
+                t.onMatch = new tinymce.util.Dispatcher(t);
+                t.onMatch.add(function (ed, match) {
+                    ed.execCallback('autocomplete_on_match', ed, match);
+                });
+            }
 
-			/**
+            /**
 			 * Search for autocomplete options after text is entered and display the 
 			 * option list if any matches are found. 
 			 */
-			function keyUpEvent(ed, e) {
-				if ((!autocomplete_data.visible && e.keyCode != ESC_KEY && e.keyCode != ENTER_KEY) || (e.keyCode != DOWN_ARROW_KEY && e.keyCode != UP_ARROW_KEY && e.keyCode != ENTER_KEY && e.keyCode != ESC_KEY)) {
-					var currentWord = getCurrentWord(ed);
-					if (currentWord.length > 0) {
-						populateList(currentWord);
-					}
-					if (currentWord.length == 0 || matches.length == 0) {
-						hideOptionList();
-					}
-				}
-			}
+            function keyUpEvent(ed, e) {
+                if ((!autocomplete_data.visible && e.keyCode != ESC_KEY && e.keyCode != ENTER_KEY) || (e.keyCode != DOWN_ARROW_KEY && e.keyCode != UP_ARROW_KEY && e.keyCode != ENTER_KEY && e.keyCode != ESC_KEY)) {
+                    var currentWord = getCurrentWord(ed);
+                    if (currentWord.length > 0) {
+                        populateList(currentWord);
+                    }
+                    if (currentWord.length == 0 || matches.length == 0) {
+                        hideOptionList();
+                    }
+                }
+            }
 
 
-			/**
+            /**
 			 * Populates autocomplete list with matched words.
 			 *
 			 */
-			function populateList(currentWord) {
-				var wordLessTrigger = currentWord.replace(autocomplete_data.trigger, "");
+            function populateList(currentWord) {
+                var wordLessTrigger = currentWord.replace(autocomplete_data.trigger, "");
 
-				if (autocomplete_data.optionsUrl) {
-					if (wordLessTrigger.length <= 1)
-						return false;
+                if (autocomplete_data.optionsUrl) {
+                    if (wordLessTrigger.length <= 1)
+                        return false;
 
-					jQuery.ajax({
-						type: "GET",
-						url: autocomplete_data.optionsUrl,
-						cache: false,
-						data: "q=" + wordLessTrigger,
-						success: function (data) {
-							//hideLoading();
-							if (data.ok && data.DATA) {
-								var options = [];
-								for (var i in data.DATA) {
-									if (data.DATA[i].name)
-										options.push(data.DATA[i].name);
-								}
-								autocomplete_data.options = options;
+                    jQuery.ajax({
+                        type: "GET",
+                        url: autocomplete_data.optionsUrl,
+                        cache: false,
+                        data: "q=" + wordLessTrigger,
+                        success: function (data) {
+                            //hideLoading();
+                            if (data.ok && data.DATA) {
+                                var options = [];
+                                for (var i in data.DATA) {
+                                    if (data.DATA[i].name)
+                                        options.push(data.DATA[i].name);
+                                }
+                                autocomplete_data.options = options;
 
-								matches = matchingOptions(wordLessTrigger);
+                                matches = matchingOptions(wordLessTrigger);
 
-								if (matches.length > 0) {
-									displayOptionList(matches, wordLessTrigger, ed);
-									highlightNextOption();
-								}
-							} else {
-								// No data
-							}
-						},
-						error: function (jqXHR, textStatus) {
-							// Error
-						}
-					}); // ajax
+                                if (matches.length > 0) {
+                                    displayOptionList(matches, wordLessTrigger, ed);
+                                    highlightNextOption();
+                                }
+                            } else {
+                                // No data
+                            }
+                        },
+                        error: function (jqXHR, textStatus) {
+                            // Error
+                        }
+                    }); // ajax
 
-				} else {
-					matches = matchingOptions(wordLessTrigger);
+                } else {
+                    matches = matchingOptions(wordLessTrigger);
 
-					if (matches.length > 0) {
-						displayOptionList(matches, wordLessTrigger, ed);
-						highlightNextOption();
-					}
-				}
-			} // populateList
+                    if (matches.length > 0) {
+                        displayOptionList(matches, wordLessTrigger, ed);
+                        highlightNextOption();
+                    }
+                }
+            } // populateList
 
-			/**
+            /**
 			 * Handle navigation inside the option list when it is visible.  
 			 * These events should not propagate to the editor. 
 			 */
-			function keyDownEvent(ed, e) {
-				if (autocomplete_data.visible) {
-					if (e.keyCode == DOWN_ARROW_KEY) {
-						highlightNextOption();
-						return tinymce.dom.Event.cancel(e);
-					}
-					if (e.keyCode == UP_ARROW_KEY) {
-						highlightPreviousOption();
-						return tinymce.dom.Event.cancel(e);
-					}
-					if (e.keyCode == ENTER_KEY) {
-						selectOption(ed, getCurrentWord(ed));
-						return tinymce.dom.Event.cancel(e);
+            function keyDownEvent(ed, e) {
+                if (autocomplete_data.visible) {
+                    if (e.keyCode == DOWN_ARROW_KEY) {
+                        highlightNextOption();
+                        return tinymce.dom.Event.cancel(e);
                     }
-					if (e.keyCode == ESC_KEY) {
-						hideOptionList();
-						return tinymce.dom.Event.cancel(e);
-					}
-					// onMatch callback
-					if (autocomplete_data.onMatch && END_WORD_KEYS.indexOf(e.keyCode)) {
-						var word = getCurrentWord(ed);
-						var matches = matchingOptions(word);
-						var completeMatch = new RegExp("^" + matches[0] + "$", "i");
-						if (matches.length == 1 && word.match(completeMatch)) {
-							t.onMatch.dispatch(ed, matches[0]);
-						}
-					}
-				}
-			}
+                    if (e.keyCode == UP_ARROW_KEY) {
+                        highlightPreviousOption();
+                        return tinymce.dom.Event.cancel(e);
+                    }
+                    if (e.keyCode == ENTER_KEY) {
+                        selectOption(ed, getCurrentWord(ed));
+                        return tinymce.dom.Event.cancel(e);
+                    }
+                    if (e.keyCode == ESC_KEY) {
+                        hideOptionList();
+                        return tinymce.dom.Event.cancel(e);
+                    }
+                    // onMatch callback
+                    if (autocomplete_data.onMatch && END_WORD_KEYS.indexOf(e.keyCode)) {
+                        var word = getCurrentWord(ed);
+                        var matches = matchingOptions(word);
+                        var completeMatch = new RegExp("^" + matches[0] + "$", "i");
+                        if (matches.length == 1 && word.match(completeMatch)) {
+                            t.onMatch.dispatch(ed, matches[0]);
+                        }
+                    }
+                }
+            }
 
-			function clickEvent(ed, e) {
-				hideOptionList();
-			}
+            function clickEvent(ed, e) {
+                hideOptionList();
+            }
 
-			/**
+            /**
 			 * Add all the options to the option list and display it right beneath 
 			 * the caret where the user is entering text. There didn't appear to be 
 			 * an easy way to retrieve the exact pixel position of the caret inside 
 			 * tinyMCE so the difficult method had to suffice. 
 			 */
-			function displayOptionList(matches, matchedText, ed) {
-				var matchesList = "";
-				var highlightRegex = new RegExp("(" + matchedText + ")");
+            function displayOptionList(matches, matchedText, ed) {
 
+                var matchesList = "";
+                var highlightRegex = new RegExp("(" + matchedText + ")");
 
-				for (var i in matches) {
-					if (matches[i].key != null) {
-						matchesList += "<li data-value='" + matches[i].key + "'>" + matches[i].key.replace(highlightRegex, "<mark>$1</mark>") + " " + matches[i].description + "</li>";
-					}
-					else {
-						matchesList += "<li data-value='" + matches[i] + "'>" + matches[i].replace(highlightRegex, "<mark>$1</mark>") + "</li>";
-					}
-				}
-				jQuery(autocomplete_data.list).html(matchesList);
+                for (var i in matches) {
+                    if (typeof (matches[i]) !== 'function') {
+                        if (matches[i].key != null) {
+                            matchesList += "<li data-value='" + matches[i].key + "'>" + matches[i].key.replace(highlightRegex, "<mark>$1</mark>") + " " + matches[i].description + "</li>";
+                        }
+                        else {
+                            matchesList += "<li data-value='" + matches[i] + "'>" + matches[i].replace(highlightRegex, "<mark>$1</mark>") + "</li>";
+                        }
+                    }
+                }
 
-				// work out the position of the caret
-				var tinymcePosition = jQuery(ed.getContainer()).position();
-				var toolbarPosition = jQuery(ed.getContainer()).find(".mceToolbar").first();
-				var nodePosition = jQuery(ed.selection.getNode()).position();
-				var textareaTop = 0;
-				var textareaLeft = 0;
-				if (ed.selection.getRng().getClientRects().length > 0) {
-					textareaTop = ed.selection.getRng().getClientRects()[0].top + ed.selection.getRng().getClientRects()[0].height;
-					textareaLeft = ed.selection.getRng().getClientRects()[0].left;
-				} else {
-					textareaTop = parseInt(jQuery(ed.selection.getNode()).css("font-size")) * 1.3 + nodePosition.top;
-					textareaLeft = nodePosition.left;
-				}
+                jQuery(autocomplete_data.list).html(matchesList);
 
-				jQuery(autocomplete_data.list).css("margin-top", tinymcePosition.top + toolbarPosition.innerHeight() + textareaTop);
-				jQuery(autocomplete_data.list).css("margin-left", tinymcePosition.left + textareaLeft);
-				jQuery(autocomplete_data.list).css("display", "block");
-				autocomplete_data.visible = true;
-				optionListEventHandlers(ed);
-			}
+                // work out the position of the caret
+                var tinymcePosition,
+                    toolbarPosition,
+                    nodePosition = jQuery(ed.selection.getNode()).position(),
+                    textareaTop = 0,
+                    textareaLeft = 0,
+                    listTop = 0,
+                    listLeft = 0;
 
-			/**
+                if (!ed.inline) {
+
+                    var container = ed.getContainer();
+
+                    tinymcePosition = jQuery(container).position();
+                    toolbarPosition = jQuery(container).find(".mce-toolbar").first();
+
+                    if (ed.selection.getRng().getClientRects().length > 0) {
+
+                        var rect = ed.selection.getRng().getClientRects()[0];
+
+                        textareaTop = rect.top + rect.height;
+                        textareaLeft = rect.left;
+
+                    } else {
+                        textareaTop = parseInt(jQuery(ed.selection.getNode()).css("font-size")) * 1.3 + nodePosition.top;
+                        textareaLeft = nodePosition.left;
+                    }
+
+                    listTop = tinymcePosition.top + toolbarPosition.innerHeight() + textareaTop;
+                    listLeft = tinymcePosition.left + textareaLeft;
+
+                }
+                else {
+
+                    var container = jQuery(ed.bodyElement);
+                    var node = jQuery(ed.selection.getNode());
+
+                    if (ed.selection.getRng().getClientRects().length > 0) {
+
+                        var rect = ed.selection.getRng().getClientRects()[0];
+
+                        textareaTop = rect.top + rect.height;
+                        textareaLeft = node.offset().left;
+
+                    } else {
+
+                        tinymcePosition = jQuery(container).position();
+
+                        textareaTop = node.offset().top + parseInt(jQuery(ed.selection.getNode()).css("font-size")) * 1.3;
+                        textareaLeft = node.offset().left;
+                    }
+
+                    listTop = textareaTop;
+                    listLeft = textareaLeft;
+                }
+
+                jQuery(autocomplete_data.list).css("top", listTop);
+                jQuery(autocomplete_data.list).css("left", listLeft);
+                jQuery(autocomplete_data.list).css("display", "block");
+
+                autocomplete_data.visible = true;
+                optionListEventHandlers(ed);
+            }
+
+            /**
 			 * Allow a user to select an option by clicking with the mouse and 
 			 * highlighting the options on hover. 
 			 */
-			function optionListEventHandlers(ed) {
-				jQuery(autocomplete_data.list).find("li").hover(function () {
-					jQuery(autocomplete_data.list).find("[data-selected=true]").attr("data-selected", "false");
-					jQuery(this).attr("data-selected", "true");
-				});
-				jQuery(autocomplete_data.list).find("li").click(function () {
-					selectOption(ed, getCurrentWord(ed));
-				});
-			}
+            function optionListEventHandlers(ed) {
+                jQuery(autocomplete_data.list).find("li").hover(function () {
+                    jQuery(autocomplete_data.list).find("[data-selected=true]").attr("data-selected", "false");
+                    jQuery(this).attr("data-selected", "true");
+                });
+                jQuery(autocomplete_data.list).find("li").click(function () {
+                    selectOption(ed, getCurrentWord(ed));
+                });
+            }
 
-			function createOptionList() {
-				var ulContainer = document.createElement("ul");
-				jQuery(ulContainer).addClass("auto-list");
-				document.body.appendChild(ulContainer);
-				return ulContainer;
-			}
+            function createOptionList() {
+                var ulContainer = document.createElement("ul");
+                jQuery(ulContainer).addClass("auto-list");
+                document.body.appendChild(ulContainer);
+                return ulContainer;
+            }
 
-			function hideOptionList() {
-				jQuery(autocomplete_data.list).css("display", "none");
-				autocomplete_data.visible = false;
-			}
+            function hideOptionList() {
+                jQuery(autocomplete_data.list).css("display", "none");
+                autocomplete_data.visible = false;
+            }
 
-			function highlightNextOption() {
-				var current = jQuery(autocomplete_data.list).find("[data-selected=true]");
-				if (current.size() == 0 || current.next().size() == 0) {
-					jQuery(autocomplete_data.list).find("li:first-child").attr("data-selected", "true");
-				} else {
-					current.next().attr("data-selected", "true");
-				}
-				current.attr("data-selected", "false");
-			}
+            function highlightNextOption() {
+                var current = jQuery(autocomplete_data.list).find("[data-selected=true]");
+                if (current.size() == 0 || current.next().size() == 0) {
+                    jQuery(autocomplete_data.list).find("li:first-child").attr("data-selected", "true");
+                } else {
+                    current.next().attr("data-selected", "true");
+                }
+                current.attr("data-selected", "false");
+            }
 
-			function highlightPreviousOption() {
-				var current = jQuery(autocomplete_data.list).find("[data-selected=true]");
-				if (current.size() == 0 || current.prev().size() == 0) {
-					jQuery(autocomplete_data.list).find("li:last-child").attr("data-selected", "true");
-				} else {
-					current.prev().attr("data-selected", "true");
-				}
-				current.attr("data-selected", "false");
-			}
+            function highlightPreviousOption() {
+                var current = jQuery(autocomplete_data.list).find("[data-selected=true]");
+                if (current.size() == 0 || current.prev().size() == 0) {
+                    jQuery(autocomplete_data.list).find("li:last-child").attr("data-selected", "true");
+                } else {
+                    current.prev().attr("data-selected", "true");
+                }
+                current.attr("data-selected", "false");
+            }
 
-			/**
+            /**
 			 * Select/insert the currently selected option.  The option will be inserted at the 
 			 * caret position with a delimiter at the end and the option enclosing text.  If the 
 			 * enclosing text has already been inserted (this would happen when you are editing 
 			 * an autocompleted option), then it won't be inserted again. 
 			 */
-			function selectOption(ed, matchedText) {
-				var current = jQuery(autocomplete_data.list).find("[data-selected=true]").attr("data-value");
-				if (current == null) {
-					current = jQuery(autocomplete_data.list).find("li:first-child").attr("data-value");
-				}
+            function selectOption(ed, matchedText) {
+                var current = jQuery(autocomplete_data.list).find("[data-selected=true]").attr("data-value");
+                if (current == null) {
+                    current = jQuery(autocomplete_data.list).find("li:first-child").attr("data-value");
+                }
 
-				var content = restOfContent(ed.selection.getSel().anchorNode, "");
-				var currentNode = ed.selection.getSel().anchorNode.textContent;
+                var content = restOfContent(ed.selection.getSel().anchorNode, "");
+                var currentNode = ed.selection.getSel().anchorNode.textContent;
 
-				// modify the range to replace overwrite the option text that has already been entered
-				var range = ed.selection.getRng();
-				range.setStart(range.startContainer, range.startOffset - matchedText.length);
-				ed.selection.setRng(range);
+                // modify the range to replace overwrite the option text that has already been entered
+                var range = ed.selection.getRng();
+                range.setStart(range.startContainer, range.startOffset - matchedText.length);
+                ed.selection.setRng(range);
 
-				// insert the trigger, selected option and following delimiter 
-				var delim = "";
-				if (autocomplete_data.delimiter.length > 0) {
-					delim = String.fromCharCode(autocomplete_data.delimiter[0]);
-				}
-				ed.selection.setContent(autocomplete_data.trigger + current.toString() + delim);
+                // insert the trigger, selected option and following delimiter 
+                var delim = "";
+                if (autocomplete_data.delimiter.length > 0) {
+                    delim = String.fromCharCode(autocomplete_data.delimiter[0]);
+                }
 
-				// insert the enclosing text if it has not already been added
-				if (autocomplete_data.enclosing.length > 0 && !closingTextExists(content, currentNode)) {
-					var middleBookmark = ed.selection.getBookmark();
-					ed.selection.setContent(delim + autocomplete_data.trigger + autocomplete_data.enclosing);
-					ed.selection.moveToBookmark(middleBookmark);
-				}
-				hideOptionList();
+                // insert the enclosing text if it has not already been added
+                if (autocomplete_data.enclosing.length > 0 && !closingTextExists(content, currentNode)) {
+                    ed.selection.setContent(autocomplete_data.trigger + current.toString() + autocomplete_data.enclosing + delim);
+                }
+                else {
+                    ed.selection.setContent(autocomplete_data.trigger + current.toString() + delim);
+                }
 
-				// onSelect callback
-				if (autocomplete_data.onSelect) {
-					t.onSelect.dispatch(ed, current);
-				}
-				hideOptionList();
-			}
+                hideOptionList();
 
-			/**
+                // onSelect callback
+                if (autocomplete_data.onSelect) {
+                    t.onSelect.dispatch(ed, current);
+                }
+            }
+
+            /**
 			 * Check if the enclosing string has already been placed past the current node.  
 			 */
-			function closingTextExists(content, currentNode) {
-				var enclosed = autocomplete_data.trigger + autocomplete_data.enclosing;
-				content = content.substr(currentNode.length);
-				var matches = new RegExp(autocomplete_data.trigger + ".{" + autocomplete_data.enclosing.length + "}", "g").exec(content);
-				if (matches != null && matches.length > 0 && matches[0] == enclosed) {
-					return true;
-				}
-				return false;
-			}
+            function closingTextExists(content, currentNode) {
+                var enclosed = autocomplete_data.trigger + autocomplete_data.enclosing;
+                content = content.substr(currentNode.length);
 
-			/**
+                var t = escapeForRegex(autocomplete_data.trigger);
+
+                var matches = new RegExp(t + ".{" + autocomplete_data.enclosing.length + "}", "g").exec(content);
+                if (matches != null && matches.length > 0 && matches[0] == enclosed) {
+                    return true;
+                }
+                return false;
+            }
+
+            /**
 			 * Recursively find all of the content past (and including) the caret node. 
 			 * This doesn't appear to be available any other way.  
 			 */
-			function restOfContent(anchorNode, content) {
-				content += anchorNode.textContent;
-				if (anchorNode.nextSibling != null) {
-					return restOfContent(anchorNode.nextSibling, content);
-				}
-				return content;
-			}
+            function restOfContent(anchorNode, content) {
+                content += anchorNode.textContent;
+                if (anchorNode.nextSibling != null) {
+                    return restOfContent(anchorNode.nextSibling, content);
+                }
+                return content;
+            }
 
-			/**
+            /**
 			 * Find all options whose beginning matches the currently entered text. 
 			 */
-			function matchingOptions(currentWord) {
-				var options = autocomplete_data.options;
-				var matches = [];
-				for (var i in options) {
-					if (options[i].key == null && (currentWord.length == 0 || beginningOfWordMatches(currentWord, options[i]))) {
-						matches.push(options[i]);
-					}
-					else if (options[i].key != null && (currentWord.length == 0 || beginningOfWordMatches(currentWord, options[i].key))) {
-						matches.push(options[i]);
-					}
-				}
-				return matches;
-			}
+            function matchingOptions(currentWord) {
+                var options = autocomplete_data.options;
+                var matches = [];
+                for (var i in options) {
+                    if(typeof(options[i]) !== 'function') {
+                        if (options[i].key == null && (currentWord.length == 0 || beginningOfWordMatches(currentWord, options[i]))) {
+                            matches.push(options[i]);
+                        }
+                        else if (options[i].key != null && (currentWord.length == 0 || beginningOfWordMatches(currentWord, options[i].key))) {
+                            matches.push(options[i]);
+                        }
+                    }
+                }
+                return matches;
+            }
 
-			function beginningOfWordMatches(beginning, option) {
-				var test = new RegExp("^" + beginning, "i");
-				return (option.match(test));
-			}
+            function beginningOfWordMatches(beginning, option) {
+                var test = new RegExp("^" + beginning, "i");
+                return option.match(test);
+            }
 
-			/**
+            /**
 			 * Retrieves the 'word' as specified by the first occurrence of a
 			 * delimiter prior to the caret position.
 			 */
-			function getCurrentWord(ed) {
-				var nodeText = ed.selection.getSel().focusNode == null ? "" : ed.selection.getSel().focusNode.nodeValue;
-				var positionInNode = ed.selection.getSel().focusOffset;
-				if (nodeText == null || nodeText.length == 0) {
-					return "";
-				}
-				var lastDelimiter = 0;
-				for (var i = 0; i < positionInNode; i++) {
-					if (autocomplete_data.delimiter.indexOf(nodeText.charCodeAt(i).toString()) != -1) {
-						lastDelimiter = i + 1;
-					}
-				}
-				var word = nodeText.substr(lastDelimiter, positionInNode - lastDelimiter);
-				var retWord = "";
-				if (autocomplete_data.trigger == '') {
-					if (word.length >= autocomplete_data.minLength) {
-						retWord = word;
-					}
-				} else {
-					if (word.length > 0 && word.charAt(0).toString() == autocomplete_data.trigger) {
-						retWord = word;
-					}
-				}
-				return retWord;
-			}
+            function getCurrentWord(ed) {
+                var nodeText = ed.selection.getSel().focusNode == null ? "" : ed.selection.getSel().focusNode.nodeValue;
+                var positionInNode = ed.selection.getSel().focusOffset;
+                if (nodeText == null || nodeText.length == 0) {
+                    return "";
+                }
+                var lastDelimiter = 0;
+                for (var i = 0; i < positionInNode; i++) {
+                    if (autocomplete_data.delimiter.indexOf(nodeText.charCodeAt(i).toString()) != -1) {
+                        lastDelimiter = i + 1;
+                    }
+                }
+                var word = nodeText.substr(lastDelimiter, positionInNode - lastDelimiter);
+                var retWord = "";
+                if (autocomplete_data.trigger == '') {
+                    if (word.length >= autocomplete_data.minLength) {
+                        retWord = word;
+                    }
+                } else {
+                    if (word.length > 0 && word.substr(0, autocomplete_data.trigger.length) == autocomplete_data.trigger) {
+                        retWord = word;
+                    }
+                }
+                return retWord;
+            }
 
-			ed.on('keyup', function (e) { keyUpEvent(ed, e) });
-			ed.on('keydown', function (e) { keyDownEvent(ed, e) });
-			ed.on('click', function (e) { clickEvent(ed, e) });
-		},
+            function escapeForRegex(text) {
+                return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+            }
 
-		getInfo: function () {
-			return {
-				longname: 'AutoComplete',
-				author: 'Mijura Pty Ltd',
-				authorurl: 'http://mijura.com',
-				infourl: 'http://blog.mijura.com',
-				version: tinymce.majorVersion + "." + tinymce.minorVersion
-			};
-		}
-	});
+            ed.on('keyup', function (e) { keyUpEvent(ed, e) });
+            ed.on('keydown', function (e) { keyDownEvent(ed, e) });
+            ed.on('click', function (e) { clickEvent(ed, e) });
+        },
 
-	tinymce.PluginManager.add('autocomplete',
+        getInfo: function () {
+            return {
+                longname: 'AutoComplete',
+                author: 'Mijura Pty Ltd',
+                authorurl: 'http://mijura.com',
+                infourl: 'http://blog.mijura.com',
+                version: tinymce.majorVersion + "." + tinymce.minorVersion
+            };
+        }
+    });
+
+    tinymce.PluginManager.add('autocomplete',
 			tinymce.plugins.AutoCompletePlugin);
 })();
