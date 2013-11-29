@@ -39,7 +39,7 @@
  * You are welcome to use this plugin at your own risk.  It is currently 
  * being maintained on GitHub where you can submit issues / feature requests. 
  *
- * Changes: Steve Hobbs (elkdanger)
+ * Changes: Steve Hobbs
  * - Support for triggers which are more than one char in length
  * - Support for TinyMCE 4 inline mode
  * - Uses new plugin filename
@@ -269,8 +269,9 @@
                     if (ed.selection.getRng().getClientRects().length > 0) {
 
                         var rect = ed.selection.getRng().getClientRects()[0];
+                        var scrollTop = jQuery(window).scrollTop();
 
-                        textareaTop = rect.top + rect.height;
+                        textareaTop = scrollTop + rect.top + rect.height;
                         textareaLeft = node.offset().left;
 
                     } else {
