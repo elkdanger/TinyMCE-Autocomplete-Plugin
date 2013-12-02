@@ -52,7 +52,7 @@
     var UP_ARROW_KEY = 38;
     var ESC_KEY = 27;
     var ENTER_KEY = 13;
-    var END_WORD_KEYS = [32, 59, 186, 188, 190];
+    var END_WORD_KEYS = [32,59, 186, 188, 190];
 
     function parseOptions(param) {
         return param.options == null && typeof param != "boolean" ? param.split(",") : param.options;
@@ -80,7 +80,9 @@
                 enclosing: ed.getParam('autocomplete_end_option', ''),
                 minLength: ed.getParam('autocomplete_min_length', '3'),
                 onSelect: ed.getParam('autocomplete_on_select', false),
-                onMatch: ed.getParam('autocomplete_on_match', false)
+                onMatch: ed.getParam('autocomplete_on_match', false),
+                customUrlData: ed.getParam('autocomplete_url_custom_data', false),
+                optionsUrlType: ed.getParam('autocomplete_url_type', 'GET')
             };
 
             var t = this;
@@ -109,12 +111,11 @@
                     if (currentWord.length > 0) {
                         populateList(currentWord);
                     }
-                    if (currentWord.length == 0 || matches.length == 0) {
+                    if (currentWord.length == 0/* || matches.length == 0*/) {
                         hideOptionList();
                     }
                 }
             }
-
 
             /**
 			 * Populates autocomplete list with matched words.
@@ -127,11 +128,19 @@
                     if (wordLessTrigger.length <= 1)
                         return false;
 
+                    var packet = {
+                        q: wordLessTrigger
+                    }
+
+                    if (autocomplete_data.customUrlData) {
+                        packet = jQuery.extend({}, packet, autocomplete_data.customUrlData);
+                    }
+
                     jQuery.ajax({
-                        type: "GET",
+                        type: autocomplete_data.optionsUrlType,
                         url: autocomplete_data.optionsUrl,
                         cache: false,
-                        data: "q=" + wordLessTrigger,
+                        data: packet,
                         success: function (data) {
                             //hideLoading();
                             if (data.ok && data.DATA) {
@@ -190,7 +199,7 @@
                         return tinymce.dom.Event.cancel(e);
                     }
                     // onMatch callback
-                    if (autocomplete_data.onMatch && END_WORD_KEYS.indexOf(e.keyCode)) {
+                    if (autocomplete_data.onMatch /*&& END_WORD_KEYS.indexOf(e.keyCode)*/) {
                         var word = getCurrentWord(ed);
                         var matches = matchingOptions(word);
                         var completeMatch = new RegExp("^" + matches[0] + "$", "i");
@@ -441,17 +450,29 @@
             function getCurrentWord(ed) {
                 var nodeText = ed.selection.getSel().focusNode == null ? "" : ed.selection.getSel().focusNode.nodeValue;
                 var positionInNode = ed.selection.getSel().focusOffset;
+
                 if (nodeText == null || nodeText.length == 0) {
                     return "";
                 }
+
                 var lastDelimiter = 0;
+
                 for (var i = 0; i < positionInNode; i++) {
-                    if (autocomplete_data.delimiter.indexOf(nodeText.charCodeAt(i).toString()) != -1) {
+
+                    var test = nodeText[i];
+
+                    if (i >= (autocomplete_data.enclosing.length)) {
+                        test = nodeText.substr(i - autocomplete_data.enclosing.length, autocomplete_data.enclosing.length);
+                    }
+
+                    if (autocomplete_data.enclosing.indexOf(test) != -1) {
                         lastDelimiter = i + 1;
                     }
                 }
+
                 var word = nodeText.substr(lastDelimiter, positionInNode - lastDelimiter);
                 var retWord = "";
+
                 if (autocomplete_data.trigger == '') {
                     if (word.length >= autocomplete_data.minLength) {
                         retWord = word;
@@ -461,6 +482,7 @@
                         retWord = word;
                     }
                 }
+
                 return retWord;
             }
 
