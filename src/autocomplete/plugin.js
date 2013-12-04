@@ -245,7 +245,8 @@
                     textareaTop = 0,
                     textareaLeft = 0,
                     listTop = 0,
-                    listLeft = 0;
+                    listLeft = 0,
+                    show = true;
 
                 if (!ed.inline) {
 
@@ -281,26 +282,23 @@
                         var scrollTop = jQuery(window).scrollTop();
 
                         textareaTop = scrollTop + rect.top + rect.height;
-                        textareaLeft = node.offset().left;
+                        textareaLeft = rect.left;
 
                     } else {
-
-                        tinymcePosition = jQuery(container).position();
-
-                        textareaTop = node.offset().top + parseInt(jQuery(ed.selection.getNode()).css("font-size")) * 1.3;
-                        textareaLeft = node.offset().left;
+                        show = false;
                     }
 
                     listTop = textareaTop;
                     listLeft = textareaLeft;
                 }
 
-                jQuery(autocomplete_data.list).css("top", listTop);
-                jQuery(autocomplete_data.list).css("left", listLeft);
-                jQuery(autocomplete_data.list).css("display", "block");
-
-                autocomplete_data.visible = true;
-                optionListEventHandlers(ed);
+                if (show) {
+                    jQuery(autocomplete_data.list).css("top", listTop);
+                    jQuery(autocomplete_data.list).css("left", listLeft);
+                    jQuery(autocomplete_data.list).css("display", "block");
+                    autocomplete_data.visible = true;
+                    optionListEventHandlers(ed);
+                }
             }
 
             /**
@@ -366,7 +364,7 @@
 
                 // modify the range to replace overwrite the option text that has already been entered
                 var range = ed.selection.getRng();
-                range.setStart(range.startContainer, range.startOffset - matchedText.length);
+                range.setStart(range.startContainer, range.startOffset - matchedText.length - autocomplete_data.trigger.length);
                 ed.selection.setRng(range);
 
                 // insert the trigger, selected option and following delimiter 
@@ -375,14 +373,18 @@
                     delim = String.fromCharCode(autocomplete_data.delimiter[0]);
                 }
 
+                var textToInsert = "";
+
                 // insert the enclosing text if it has not already been added
                 if (autocomplete_data.enclosing.length > 0 && !closingTextExists(content, currentNode)) {
-                    ed.selection.setContent(autocomplete_data.trigger + current.toString() + autocomplete_data.enclosing + delim);
+                    textToInsert = autocomplete_data.trigger + current.toString() + autocomplete_data.enclosing + delim;
                 }
                 else {
-                    ed.selection.setContent(autocomplete_data.trigger + current.toString() + delim);
+                    textToInsert = autocomplete_data.trigger + current.toString() + delim;
                 }
 
+                ed.selection.setContent(textToInsert);
+                
                 hideOptionList();
 
                 // onSelect callback
@@ -454,33 +456,55 @@
                 if (nodeText == null || nodeText.length == 0) {
                     return "";
                 }
+                
+                var tlen = autocomplete_data.trigger.length;
+                var triggerPos = -1;
+                var lastDelimiter = -1;
 
-                var lastDelimiter = 0;
-
-                for (var i = 0; i < positionInNode; i++) {
-
-                    var test = nodeText[i];
-
-                    if (i >= (autocomplete_data.enclosing.length)) {
-                        test = nodeText.substr(i - autocomplete_data.enclosing.length, autocomplete_data.enclosing.length);
-                    }
-
-                    if (autocomplete_data.enclosing.indexOf(test) != -1) {
-                        lastDelimiter = i + 1;
+                // Go back until we find the start of the trigger
+                for (var i = positionInNode; i > -1; i--) {
+                    if (nodeText.substr(i, tlen) == autocomplete_data.trigger && triggerPos == -1) {
+                        triggerPos = i;
                     }
                 }
 
-                var word = nodeText.substr(lastDelimiter, positionInNode - lastDelimiter);
-                var retWord = "";
+                if (triggerPos > -1) {
 
-                if (autocomplete_data.trigger == '') {
-                    if (word.length >= autocomplete_data.minLength) {
-                        retWord = word;
+                    for (var i = triggerPos; i < nodeText.length; i++) {
+
+                        var test = nodeText[i];
+
+                        if (i < (nodeText.length - autocomplete_data.enclosing.length)) {
+                            if (nodeText.substr(i, autocomplete_data.enclosing.length) == autocomplete_data.enclosing) {
+                                lastDelimiter = i + 1;
+                            }
+                        }
                     }
-                } else {
-                    if (word.length > 0 && word.substr(0, autocomplete_data.trigger.length) == autocomplete_data.trigger) {
-                        retWord = word;
+
+                    if(lastDelimiter == -1) {
+                        lastDelimiter = positionInNode;
                     }
+                    else if(positionInNode > lastDelimiter) {
+                        return "";
+                    }
+
+                    var word = nodeText.substr(triggerPos + tlen, lastDelimiter);
+                    var retWord = "";
+
+                    if (autocomplete_data.trigger == '') {
+                        if (word.length >= autocomplete_data.minLength) {
+                            retWord = word;
+                        }
+                    } else {
+                        retWord = word;
+
+                        //if (word.length > tlen && word.substr(positionInNode - tlen, tlen) == autocomplete_data.trigger) {
+                        //    retWord = word;
+                        //}
+                    }
+                }
+                else {
+                    return "";
                 }
 
                 return retWord;
@@ -488,6 +512,10 @@
 
             function escapeForRegex(text) {
                 return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+            }
+
+            function outerHtml(jq) {
+                return jQuery("<p>").append(jq.eq(0).clone()).html();
             }
 
             ed.on('keyup', function (e) { keyUpEvent(ed, e) });
